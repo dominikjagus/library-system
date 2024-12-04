@@ -1,0 +1,77 @@
+WITH RFM AS (
+    SELECT
+        customer_id,
+        DATEDIFF('1998-11-30', MAX(the_date)) AS recency,
+        COUNT(*) AS frequency,
+        SUM(store_sales) AS monetary
+    FROM
+        transactions
+    JOIN
+        time ON transactions.time_id = time.time_id
+    GROUP BY
+        customer_id
+), 
+PromotionMetrics AS (
+    SELECT
+        customer_id,
+        COUNT(CASE WHEN promotion_id != 0 THEN 1 END) / COUNT(*) AS promotion_purchase_ratio,
+        SUM(CASE WHEN promotion_id != 0 THEN store_sales ELSE 0 END) / SUM(store_sales) AS promotion_spend_ratio
+    FROM
+        transactions
+    GROUP BY
+        customer_id
+), 
+RFM_Scoring AS (
+    SELECT
+        customer_id,
+        CASE
+            WHEN recency <= 30 THEN 5
+            WHEN recency <= 60 THEN 4
+            WHEN recency <= 90 THEN 3
+            WHEN recency <= 120 THEN 2
+            ELSE 1
+        END AS recency_score,
+        CASE
+            WHEN frequency >= 50 THEN 5
+            WHEN frequency >= 30 THEN 4
+            WHEN frequency >= 20 THEN 3
+            WHEN frequency >= 10 THEN 2
+            ELSE 1
+        END AS frequency_score,
+        CASE
+            WHEN monetary >= 1000 THEN 5
+            WHEN monetary >= 500 THEN 4
+            WHEN monetary >= 200 THEN 3
+            WHEN monetary >= 100 THEN 2
+            ELSE 1
+        END AS monetary_score
+    FROM
+        RFM
+), 
+Promotion_Scoring AS (
+    SELECT
+        customer_id,
+        CASE
+            WHEN promotion_purchase_ratio >= 0.8 THEN 5
+            WHEN promotion_purchase_ratio >= 0.6 THEN 4
+            WHEN promotion_purchase_ratio >= 0.4 THEN 3
+            WHEN promotion_purchase_ratio >= 0.2 THEN 2
+            ELSE 1
+        END AS promotion_score
+    FROM
+        PromotionMetrics
+)
+SELECT
+    RFM_Scoring.customer_id,
+    recency_score,
+    frequency_score,
+    monetary_score,
+    promotion_score,
+    CONCAT(recency_score, frequency_score, monetary_score) AS rfm_p_score
+FROM
+    RFM_Scoring
+JOIN
+    Promotion_Scoring ON RFM_Scoring.customer_id = Promotion_Scoring.customer_id
+ORDER BY
+    rfm_p_score DESC, promotion_score DESC
+LIMIT 1000;
